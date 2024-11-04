@@ -1,80 +1,49 @@
-#include "tree.hpp"
 #include <limits>
-
-struct Dmatrix {
-  std::vector<std::vector<float>> distances;
-  std::vector<int> activeNodes;
-
-  float &at(int first, int second) {
-    int smallest = first < second ? first : second;
-    return distances[smallest][first + second - smallest];
-  }
-
-  // Construct a vector with spaces for internal nodes
-  Dmatrix(int numTaxa)
-      : distances(numTaxa + numTaxa - 2,
-                  std::vector<float>(numTaxa + numTaxa - 2)) {
-    // Add initial nodes to activeNodes
-    for (int i = 0; i < numTaxa; i++) {
-      activeNodes.push_back(i);
-    }
-
-    // Intialize zero distances
-
-    for (int i = 0; i < distances.size(); i++) {
-      distances[i][i] = 0;
-    }
-  }
-};
-
-int sumDistances(struct Dmatrix &matrix, int taxa);
-void getNearestNeighbors(struct Dmatrix &matrix, int &first, int &second);
-void updateDistances(struct Dmatrix &matrix, int first, int second,
+#include <fstream>
+#include "DMatrix.hpp"
+#include "tree.hpp"
+#include <iostream>
+int sumDistances(struct DMatrix &matrix, int taxa);
+void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second);
+void updateDistances(struct DMatrix &matrix, int first, int second,
                      int newNode);
+DMatrix *buildMatrixFromFile(std::string filename);
+
 
 int main(int argc, char **args) {
 
-  struct Dmatrix matrix = Dmatrix(5);
 
-  Tree *tree = new Tree(matrix.distances.size());
+  struct DMatrix *matrix = buildMatrixFromFile("test.phylip");
+  Tree *tree = new Tree(matrix->distances.size());
 
-  matrix.at(0, 1) = 5;
-  matrix.at(0, 2) = 9;
-  matrix.at(0, 3) = 9;
-  matrix.at(0, 4) = 8;
-  matrix.at(1, 2) = 10;
-  matrix.at(1, 3) = 10;
-  matrix.at(1, 4) = 9;
-  matrix.at(2, 3) = 8;
-  matrix.at(2, 4) = 7;
-  matrix.at(3, 4) = 3;
+
 
   // index of internal node to join to
-  int internalNodeIdx = matrix.activeNodes.size();
+  int internalNodeIdx = matrix->activeNodes.size();
 
-  while (matrix.activeNodes.size() > 2) {
+  while (matrix->activeNodes.size() > 2) {
     int firstTaxon, secondTaxon;
 
-    getNearestNeighbors(matrix, firstTaxon, secondTaxon);
+    getNearestNeighbors(*matrix, firstTaxon, secondTaxon);
 
     // Calculate distances from joined nodes to internal node
-    float firstDistance = 0.5 * matrix.at(firstTaxon, secondTaxon) +
-      (float) ( sumDistances(matrix, firstTaxon) - sumDistances(matrix, secondTaxon)) /
-      (float) (2 * (matrix.activeNodes.size() - 2));
+    float firstDistance = 0.5 * matrix->at(firstTaxon, secondTaxon) +
+      (float) ( sumDistances(*matrix, firstTaxon) - sumDistances(*matrix, secondTaxon)) /
+      (float) (2 * (matrix->activeNodes.size() - 2));
 
-    float secondDistance = matrix.at(firstTaxon, secondTaxon) - firstDistance;
+    float secondDistance = matrix->at(firstTaxon, secondTaxon) - firstDistance;
 
     tree->add_edge(internalNodeIdx, firstTaxon, firstDistance);
     tree->add_edge(internalNodeIdx, secondTaxon, secondDistance);
 
     // Calculate distances from other taxa to the new node
-    updateDistances(matrix, firstTaxon, secondTaxon, internalNodeIdx);
+    updateDistances(*matrix, firstTaxon, secondTaxon, internalNodeIdx);
 
     // Remove joined taxa
 
     std::vector<int> newActive;
 
-    for (const auto &i : matrix.activeNodes) {
+    for (const auto &i : matrix->activeNodes) {
       if (i != firstTaxon && i != secondTaxon) {
         newActive.push_back(i);
       }
@@ -82,22 +51,23 @@ int main(int argc, char **args) {
 
     newActive.push_back(internalNodeIdx);
 
-    matrix.activeNodes.swap(newActive);
+    matrix->activeNodes.swap(newActive);
     internalNodeIdx++;
   }
 
+  
   // Connect the remaining two nodes
 
-  float distance = matrix.at(matrix.activeNodes[0], matrix.activeNodes[1]);
+  float distance = matrix->at(matrix->activeNodes[0], matrix->activeNodes[1]);
 
-  tree->add_edge(matrix.activeNodes[0], matrix.activeNodes[1], distance);
+  tree->add_edge(matrix->activeNodes[0], matrix->activeNodes[1], distance);
 
   tree->print();
 
   delete tree;
 }
 
-void getNearestNeighbors(struct Dmatrix &matrix, int &first, int &second) {
+void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second) {
 
   int smallestQ = std::numeric_limits<int>::max();
 
@@ -123,7 +93,7 @@ void getNearestNeighbors(struct Dmatrix &matrix, int &first, int &second) {
 }
 
 // Updates the distance matrix after joining first and second
-void updateDistances(struct Dmatrix &matrix, int first, int second,
+void updateDistances(struct DMatrix &matrix, int first, int second,
                      int newNode) {
 
   int numTaxa = matrix.activeNodes.size();
@@ -148,11 +118,90 @@ void updateDistances(struct Dmatrix &matrix, int first, int second,
 }
 
 // Sums the distances between a single taxa and the rest
-int sumDistances(struct Dmatrix &matrix, int taxa) {
+int sumDistances(struct DMatrix &matrix, int taxa) {
   int sum = 0;
   for (int i = 0; i < matrix.activeNodes.size(); i++) {
     sum += matrix.at(matrix.activeNodes[i], taxa);
   }
 
   return sum;
+}
+
+
+int getHammingDistance(const std::string &first, const std::string &second) {
+  int length = first.length();
+  // Number of mismatches, excluding gaps
+  int diff = 0;
+
+  for (int i = 0; i < length; i++) {
+    if (first[i] != second[i] && (first[i] != '-' || second[i] != '-')) {
+      diff++;
+    }
+  }
+
+  return diff;
+}
+
+DMatrix *buildMatrixFromFile(std::string filename) {
+
+  std::ifstream taxaFile(filename);
+
+  int numTaxa;
+  taxaFile >> numTaxa;
+
+  // names of the samples
+  std::vector<std::string> names(numTaxa);
+  // Vector to hold sequence slices
+  std::vector<std::string> sequences(numTaxa);
+  struct DMatrix *matrix = new DMatrix(numTaxa);
+
+
+  // Get rid of the first line
+  getline(taxaFile, sequences[0]);
+
+  bool firstRead = true;
+
+  while (getline(taxaFile, sequences[0])) {
+
+    
+    for (int i = 1; i < numTaxa; i++) {
+      getline(taxaFile, sequences[i]);
+    }
+
+    if (firstRead) {
+      for (int i = 0; i < numTaxa; i++) {
+	names[i] = sequences[i].substr(0, 10);
+      }
+    }
+
+    for (int i = 0; i < numTaxa; i++) {
+      for (int j = i + 1; j < numTaxa; j++) {
+
+	std::string first;
+	std::string second;
+	if (firstRead) {
+	  first = sequences[i].substr(9, sequences[i].length() - 1);
+	  second = sequences[j].substr(9, sequences[j].length() - 1);
+	} else {
+	  first = sequences[i];
+	  second = sequences[j];
+	}
+	
+	matrix->at(i, j) += getHammingDistance(first, second);
+      }
+    }
+
+    if (firstRead) {
+      firstRead = false;
+    }
+
+    // get rid of empty line
+    getline(taxaFile, sequences[0]);
+  }
+
+  for (int i = 0; i < names.size(); i++) {
+    std::cout << names[i] << std::endl;
+  }
+
+  return matrix;
 }
