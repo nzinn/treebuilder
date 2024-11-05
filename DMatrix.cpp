@@ -8,7 +8,7 @@ float &DMatrix::at(int first, int second) {
 // Construct a vector with spaces for internal nodes
 DMatrix::DMatrix(int numTaxa)
     : distances(numTaxa + numTaxa - 2,
-                std::vector<float>(numTaxa + numTaxa - 2)) {
+                std::vector<float>(numTaxa + numTaxa - 2)), names(numTaxa) {
   // Add initial nodes to activeNodes
   for (int i = 0; i < numTaxa; i++) {
     activeNodes.push_back(i);

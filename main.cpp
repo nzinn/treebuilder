@@ -13,9 +13,20 @@ DMatrix *buildMatrixFromFile(std::string filename);
 int main(int argc, char **args) {
 
 
-  struct DMatrix *matrix = buildMatrixFromFile("test.phylip");
+  std::string filename;
+
+  if (argc == 2) {
+    filename.assign(args[1]);
+  } else {
+    std::cout << "Incorrect number of args: " << argc << std::endl;
+    return -1;
+  }
+
+  
+  struct DMatrix *matrix = buildMatrixFromFile(filename);
   Tree *tree = new Tree(matrix->distances.size());
 
+  tree->setNames(matrix->names);
 
 
   // index of internal node to join to
@@ -62,8 +73,9 @@ int main(int argc, char **args) {
 
   tree->add_edge(matrix->activeNodes[0], matrix->activeNodes[1], distance);
 
-  tree->print();
+  std::cout << tree->toNewickString() << std::endl;
 
+  delete matrix;
   delete tree;
 }
 
@@ -144,13 +156,17 @@ int getHammingDistance(const std::string &first, const std::string &second) {
 
 DMatrix *buildMatrixFromFile(std::string filename) {
 
+  // Open file
   std::ifstream taxaFile(filename);
+
+  if (!taxaFile.is_open()) {
+    std::cout << "Failed to open: " << filename << std::endl;
+    std::exit(-1);
+  }
 
   int numTaxa;
   taxaFile >> numTaxa;
 
-  // names of the samples
-  std::vector<std::string> names(numTaxa);
   // Vector to hold sequence slices
   std::vector<std::string> sequences(numTaxa);
   struct DMatrix *matrix = new DMatrix(numTaxa);
@@ -170,7 +186,7 @@ DMatrix *buildMatrixFromFile(std::string filename) {
 
     if (firstRead) {
       for (int i = 0; i < numTaxa; i++) {
-	names[i] = sequences[i].substr(0, 10);
+	matrix->names[i] = sequences[i].substr(0, 10);
       }
     }
 
@@ -197,10 +213,6 @@ DMatrix *buildMatrixFromFile(std::string filename) {
 
     // get rid of empty line
     getline(taxaFile, sequences[0]);
-  }
-
-  for (int i = 0; i < names.size(); i++) {
-    std::cout << names[i] << std::endl;
   }
 
   return matrix;

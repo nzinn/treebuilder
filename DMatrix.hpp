@@ -2,6 +2,7 @@
 #include <string>
 
 struct DMatrix {
+  std::vector<std::string> names;
   std::vector<std::vector<float>> distances;
   std::vector<int> activeNodes;
 
