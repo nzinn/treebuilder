@@ -1,3 +1,7 @@
+
+#ifndef TREE_H
+#define TREE_H
+
 #include <string>
 #include <vector>
 
@@ -19,4 +23,4 @@ public:
   int getNumNodes();
   std::string toNewickString();
 };
-
+#endif

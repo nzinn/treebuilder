@@ -1,219 +1,128 @@
-#include <limits>
-#include <fstream>
-#include "DMatrix.hpp"
-#include "tree.hpp"
+#include "NNalgorithm.hpp"
+#include <curl/curl.h>
 #include <iostream>
-int sumDistances(struct DMatrix &matrix, int taxa);
-void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second);
-void updateDistances(struct DMatrix &matrix, int first, int second,
-                     int newNode);
-DMatrix *buildMatrixFromFile(std::string filename);
+#include <iterator>
+#include <sstream>
+#include <fstream>
+
+
+
+
+// for handling JSON formatting
+struct FormParams {
+
+  std::ostringstream formParams;
+  CURL *curl;
+  int numParams = 0;
+
+  FormParams(CURL *curl) : curl(curl){}
+
+  void addParam(std::string Name, std::string value) {
+
+    if (numParams) {
+      formParams << "&";
+    }
+    
+    formParams << Name << "=" << curl_easy_escape(curl, value.c_str(), value.length());
+    
+    numParams++;
+  }
+
+  std::string str() { return formParams.str(); }
+  
+};
+
+
+std::string curlPOST(CURL *curl, std::string url, struct FormParams &params);
+
 
 
 int main(int argc, char **args) {
 
+  const std::string CLUSTAL_API_URL =
+      "https://www.ebi.ac.uk/Tools/services/rest/clustalo";
 
-  std::string filename;
+  std::ostringstream sequences;
 
-  if (argc == 2) {
-    filename.assign(args[1]);
-  } else {
-    std::cout << "Incorrect number of args: " << argc << std::endl;
+  if (argc < 4) {
+    std::cout << "Please input at least 3 files in FASTA format" << std::endl;
     return -1;
   }
 
-  
-  struct DMatrix *matrix = buildMatrixFromFile(filename);
-  Tree *tree = new Tree(matrix->distances.size());
+  for (int i = 1; i < argc; i++) {
+    std::ifstream seq(args[i]);
 
-  tree->setNames(matrix->names);
-
-
-  // index of internal node to join to
-  int internalNodeIdx = matrix->activeNodes.size();
-
-  while (matrix->activeNodes.size() > 2) {
-    int firstTaxon, secondTaxon;
-
-    getNearestNeighbors(*matrix, firstTaxon, secondTaxon);
-
-    // Calculate distances from joined nodes to internal node
-    float firstDistance = 0.5 * matrix->at(firstTaxon, secondTaxon) +
-      (float) ( sumDistances(*matrix, firstTaxon) - sumDistances(*matrix, secondTaxon)) /
-      (float) (2 * (matrix->activeNodes.size() - 2));
-
-    float secondDistance = matrix->at(firstTaxon, secondTaxon) - firstDistance;
-
-    tree->add_edge(internalNodeIdx, firstTaxon, firstDistance);
-    tree->add_edge(internalNodeIdx, secondTaxon, secondDistance);
-
-    // Calculate distances from other taxa to the new node
-    updateDistances(*matrix, firstTaxon, secondTaxon, internalNodeIdx);
-
-    // Remove joined taxa
-
-    std::vector<int> newActive;
-
-    for (const auto &i : matrix->activeNodes) {
-      if (i != firstTaxon && i != secondTaxon) {
-        newActive.push_back(i);
-      }
-    }
-
-    newActive.push_back(internalNodeIdx);
-
-    matrix->activeNodes.swap(newActive);
-    internalNodeIdx++;
-  }
-
-  
-  // Connect the remaining two nodes
-
-  float distance = matrix->at(matrix->activeNodes[0], matrix->activeNodes[1]);
-
-  tree->add_edge(matrix->activeNodes[0], matrix->activeNodes[1], distance);
-
-  std::cout << tree->toNewickString() << std::endl;
-
-  delete matrix;
-  delete tree;
-}
-
-void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second) {
-
-  int smallestQ = std::numeric_limits<int>::max();
-
-  int numTaxa = matrix.activeNodes.size();
-
-  for (int i = 0; i < numTaxa; i++) {
-    for (int j = i + 1; j < numTaxa; j++) {
-
-      int firstActive = matrix.activeNodes[i];
-      int secondActive = matrix.activeNodes[j];
-
-      int Q = (numTaxa - 2) * matrix.at(firstActive, secondActive) -
-              sumDistances(matrix, firstActive) -
-              sumDistances(matrix, secondActive);
-
-      if (Q < smallestQ) {
-        smallestQ = Q;
-        first = matrix.activeNodes[i];
-        second = matrix.activeNodes[j];
-      }
-    }
-  }
-}
-
-// Updates the distance matrix after joining first and second
-void updateDistances(struct DMatrix &matrix, int first, int second,
-                     int newNode) {
-
-  int numTaxa = matrix.activeNodes.size();
-
-  // Remove first and second from distance matrix
-  for (int i = 0; i < numTaxa; i++) {
-    if (matrix.activeNodes[i] != first && matrix.activeNodes[i] != second &&
-        matrix.activeNodes[i] != newNode) {
-
-      // distance from node i to first
-      float fiDistance = matrix.at(matrix.activeNodes[i], first);
-      // distance from node i to second
-      float siDistance = matrix.at(matrix.activeNodes[i], second);
-      // distance from first to second
-      float fsDistance = matrix.at(first, second);
-
-      float newDistance = 0.5 * (fiDistance + siDistance - fsDistance);
-
-      matrix.at(newNode, matrix.activeNodes[i]) = newDistance;
-    }
-  }
-}
-
-// Sums the distances between a single taxa and the rest
-int sumDistances(struct DMatrix &matrix, int taxa) {
-  int sum = 0;
-  for (int i = 0; i < matrix.activeNodes.size(); i++) {
-    sum += matrix.at(matrix.activeNodes[i], taxa);
-  }
-
-  return sum;
-}
-
-
-int getHammingDistance(const std::string &first, const std::string &second) {
-  int length = first.length();
-  // Number of mismatches, excluding gaps
-  int diff = 0;
-
-  for (int i = 0; i < length; i++) {
-    if (first[i] != second[i] && (first[i] != '-' || second[i] != '-')) {
-      diff++;
+    if (seq.is_open()) {
+      sequences << std::string((std::istreambuf_iterator<char>(seq)), (std::istreambuf_iterator<char>()));
+    } else {
+      std::cout << "Failed to open file, exiting." << std::endl; 
     }
   }
 
-  return diff;
+  CURL *curl = curl_easy_init();
+
+  if (curl) {
+
+    struct FormParams jobParams(curl);
+
+    jobParams.addParam("email", "noahwzinn@gmail.com");
+    jobParams.addParam("outfmt", "phylip");
+    jobParams.addParam("sequence", sequences.str());
+
+    std::cout << curlPOST(curl, CLUSTAL_API_URL + "/run", jobParams) << std::endl;
+
+  } else {
+    std::cout << "Couldn't init curl!" << std::endl;
+  }
+  curl_easy_cleanup(curl);
 }
 
-DMatrix *buildMatrixFromFile(std::string filename) {
 
-  // Open file
-  std::ifstream taxaFile(filename);
+size_t curlWriteFunction(char *ptr, size_t size, size_t nmemb, void *userdata) {
 
-  if (!taxaFile.is_open()) {
-    std::cout << "Failed to open: " << filename << std::endl;
-    std::exit(-1);
+  std::ostringstream *data = (std::ostringstream *)userdata;
+
+  for (int i = 0; i < nmemb; i++) {
+    *data << ptr[i];
   }
 
-  int numTaxa;
-  taxaFile >> numTaxa;
-
-  // Vector to hold sequence slices
-  std::vector<std::string> sequences(numTaxa);
-  struct DMatrix *matrix = new DMatrix(numTaxa);
+  return size * nmemb;
+}
 
 
-  // Get rid of the first line
-  getline(taxaFile, sequences[0]);
+// Execute a POST request
+std::string curlPOST(CURL *curl, std::string url, struct FormParams &params) {
+  // Set headers
 
-  bool firstRead = true;
+    struct curl_slist *headers = nullptr;
 
-  while (getline(taxaFile, sequences[0])) {
+    std::ostringstream result;
+
 
     
-    for (int i = 1; i < numTaxa; i++) {
-      getline(taxaFile, sequences[i]);
+    // Set options
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, params.str().length());
+
+
+    std::string data = params.str();
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
+
+    
+
+    // Write function callback and data
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteFunction);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result);
+
+    CURLcode res;
+
+    // Submit job
+
+    res = curl_easy_perform(curl);
+
+    if (res == CURLE_OK) {
+      return result.str();
+    } else {
+      return "Error";
     }
-
-    if (firstRead) {
-      for (int i = 0; i < numTaxa; i++) {
-	matrix->names[i] = sequences[i].substr(0, 10);
-      }
-    }
-
-    for (int i = 0; i < numTaxa; i++) {
-      for (int j = i + 1; j < numTaxa; j++) {
-
-	std::string first;
-	std::string second;
-	if (firstRead) {
-	  first = sequences[i].substr(9, sequences[i].length() - 1);
-	  second = sequences[j].substr(9, sequences[j].length() - 1);
-	} else {
-	  first = sequences[i];
-	  second = sequences[j];
-	}
-	
-	matrix->at(i, j) += getHammingDistance(first, second);
-      }
-    }
-
-    if (firstRead) {
-      firstRead = false;
-    }
-
-    // get rid of empty line
-    getline(taxaFile, sequences[0]);
-  }
-
-  return matrix;
 }
