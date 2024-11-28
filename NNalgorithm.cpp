@@ -1,8 +1,8 @@
-#include <limits>
+#include "NNalgorithm.hpp"
 #include "DMatrix.hpp"
 #include "tree.hpp"
 #include <iostream>
-
+#include <limits>
 
 int sumDistances(struct DMatrix &matrix, int taxa);
 void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second);
@@ -10,15 +10,12 @@ void updateDistances(struct DMatrix &matrix, int first, int second,
                      int newNode);
 DMatrix *phylipToMatrix(std::istream &phylipStream);
 
-
 std::string phylipToNewick(std::istream &phylipStream) {
 
-  
   struct DMatrix *matrix = phylipToMatrix(phylipStream);
   Tree *tree = new Tree(matrix->distances.size());
 
   tree->setNames(matrix->names);
-
 
   // index of internal node to join to
   int internalNodeIdx = matrix->activeNodes.size();
@@ -30,8 +27,9 @@ std::string phylipToNewick(std::istream &phylipStream) {
 
     // Calculate distances from joined nodes to internal node
     float firstDistance = 0.5 * matrix->at(firstTaxon, secondTaxon) +
-      (float) ( sumDistances(*matrix, firstTaxon) - sumDistances(*matrix, secondTaxon)) /
-      (float) (2 * (matrix->activeNodes.size() - 2));
+                          (float)(sumDistances(*matrix, firstTaxon) -
+                                  sumDistances(*matrix, secondTaxon)) /
+                              (float)(2 * (matrix->activeNodes.size() - 2));
 
     float secondDistance = matrix->at(firstTaxon, secondTaxon) - firstDistance;
 
@@ -57,13 +55,11 @@ std::string phylipToNewick(std::istream &phylipStream) {
     internalNodeIdx++;
   }
 
-  
   // Connect the remaining two nodes
 
   float distance = matrix->at(matrix->activeNodes[0], matrix->activeNodes[1]);
 
   tree->add_edge(matrix->activeNodes[0], matrix->activeNodes[1], distance);
-
 
   std::string newickString = tree->toNewickString();
   delete matrix;
@@ -71,9 +67,8 @@ std::string phylipToNewick(std::istream &phylipStream) {
 
   return newickString;
 }
-
-
-//Given a distance matrix, put the index of the nearest neighbors in first and second
+// Given a distance matrix, put the index of the nearest neighbors in first and
+// second
 void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second) {
 
   int smallestQ = std::numeric_limits<int>::max();
@@ -134,7 +129,6 @@ int sumDistances(struct DMatrix &matrix, int taxa) {
   return sum;
 }
 
-
 // Gets the hamming distance of the strings, ignoring gaps
 int getHammingDistance(const std::string &first, const std::string &second) {
   int length = first.length();
@@ -150,10 +144,8 @@ int getHammingDistance(const std::string &first, const std::string &second) {
   return diff;
 }
 
-
 // Takes a istream in phylip format and returns a distance matrix
 DMatrix *phylipToMatrix(std::istream &phylipStream) {
-
 
   int numTaxa;
   phylipStream >> numTaxa;
@@ -162,7 +154,6 @@ DMatrix *phylipToMatrix(std::istream &phylipStream) {
   std::vector<std::string> sequences(numTaxa);
   struct DMatrix *matrix = new DMatrix(numTaxa);
 
-
   // Get rid of the first line
   getline(phylipStream, sequences[0]);
 
@@ -170,31 +161,30 @@ DMatrix *phylipToMatrix(std::istream &phylipStream) {
 
   while (getline(phylipStream, sequences[0])) {
 
-    
     for (int i = 1; i < numTaxa; i++) {
       getline(phylipStream, sequences[i]);
     }
 
     if (firstRead) {
       for (int i = 0; i < numTaxa; i++) {
-	matrix->names[i] = sequences[i].substr(0, 10);
+        matrix->names[i] = sequences[i].substr(0, 10);
       }
     }
 
     for (int i = 0; i < numTaxa; i++) {
       for (int j = i + 1; j < numTaxa; j++) {
 
-	std::string first;
-	std::string second;
-	if (firstRead) {
-	  first = sequences[i].substr(9, sequences[i].length() - 1);
-	  second = sequences[j].substr(9, sequences[j].length() - 1);
-	} else {
-	  first = sequences[i];
-	  second = sequences[j];
-	}
-	
-	matrix->at(i, j) += getHammingDistance(first, second);
+        std::string first;
+        std::string second;
+        if (firstRead) {
+          first = sequences[i].substr(9, sequences[i].length() - 1);
+          second = sequences[j].substr(9, sequences[j].length() - 1);
+        } else {
+          first = sequences[i];
+          second = sequences[j];
+        }
+
+        matrix->at(i, j) += getHammingDistance(first, second);
       }
     }
 

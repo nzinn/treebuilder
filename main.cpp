@@ -1,11 +1,14 @@
 #include "NNalgorithm.hpp"
 #include <curl/curl.h>
+#include <zip.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <sstream>
 #include <unistd.h>
+
+namespace fs = std::filesystem;
 
 // for handling JSON formatting
 struct FormParams {
@@ -28,17 +31,19 @@ struct FormParams {
     numParams++;
   }
 
+  
   std::string str() { return formParams.str(); }
 };
+
+
 
 CURLcode curlPOST(CURL *curl, std::string url, struct FormParams &params,
                   std::string &response);
 CURLcode curlReq(CURL *curl, std::string url, std::string &response);
 
-int main(int argc, char **args) {
+int alignSequences(const std::string &sequences,  std::ostream &phylipOut);
 
-  const std::string CLUSTAL_API_URL =
-      "https://www.ebi.ac.uk/Tools/services/rest/clustalo";
+int main(int argc, char **args) {
 
   std::ostringstream sequences;
 
@@ -59,11 +64,30 @@ int main(int argc, char **args) {
     }
   }
 
+
+  std::stringstream alignedSeq;
+  // Submit sequences to clustal omega to align
+  if (!alignSequences(sequences.str(), alignedSeq)) {
+    return -1;
+  }
+
+  std::cout << phylipToNewick(alignedSeq) << std::endl;
+
+  
+}
+
+
+// From a string of sequences in FASTA format
+int alignSequences(const std::string &sequences,  std::ostream &phylipOut) {
+
+  const std::string CLUSTAL_API_URL =
+      "https://www.ebi.ac.uk/Tools/services/rest/clustalo";
+
   CURL *curl = curl_easy_init();
 
   if (!curl) {
     std::cout << "Couldn't init curl, aborting" << std::endl;
-    return -1;
+    return 0;
   }
 
   // submit msa job
@@ -71,7 +95,7 @@ int main(int argc, char **args) {
 
   jobParams.addParam("email", "noahwzinn@gmail.com");
   jobParams.addParam("outfmt", "phylip");
-  jobParams.addParam("sequence", sequences.str());
+  jobParams.addParam("sequence", sequences);
 
   std::cout << "Submitting multiple sequence alignment job" << std::endl;
   std::string jobID;
@@ -85,14 +109,14 @@ int main(int argc, char **args) {
   if (jobSubmit != CURLE_OK) {
     std::cout << "Error submitting job: CURLcode " << jobSubmit << ", aborting"
               << std::endl;
-    return -1;
+    return 0;
   }
 
   // Handle if we get an error from clustal omega
   if (jobID[0] == '<') {
     std::cout << "Error from clustal: " << std::endl << jobID << std::endl;
 
-    return -1;
+    return 0;
   }
 
   std::cout << "Submitted" << std::endl;
@@ -108,7 +132,7 @@ int main(int argc, char **args) {
 
     if (waiting != CURLE_OK) {
       std::cout << "Curl error: " << waiting << std::endl;
-      return -1;
+      return 0;
     }
   }
 
@@ -121,27 +145,36 @@ int main(int argc, char **args) {
 
   if (download != CURLE_OK) {
     std::cout << "Curl error: " << download << std::endl;
-    return -1;
+    return 0;
   }
 
   // Check if results folder exists, if not create it
 
-  if (!std::filesystem::exists(std::filesystem::path("results/"))) {
+  if (!fs::exists(fs::path("results/"))) {
     std::system("mkdir results");
   }
 
-  std::ofstream zip("results/" + jobID + ".zip");
-  zip << zipFile;
-  zip.close();
 
-  std::string unZip = "unzip results/" + jobID + " -d results/" + jobID;
+  zip_error_t error;
+  zip_source_t *zipSource = zip_source_buffer_create(zipFile.c_str(), zipFile.length(), 0, &error);
+  zip_t *archive = zip_open_from_source(zipSource, 0, &error);
 
-  std::system(unZip.c_str());
+  std::string filename = jobID + ".phylip";
+  zip_file_t *phylipFile = zip_fopen(archive, filename.c_str(), 0);
 
-  std::string deleteZip = "rm results/" + jobID + ".zip";
-  std::system(deleteZip.c_str());
 
+  char *buf;
+
+  while (zip_fread(phylipFile, buf, 1)) {
+    phylipOut << *buf;
+  }
+  
+
+  zip_fclose(phylipFile);
+  zip_close(archive);
   curl_easy_cleanup(curl);
+
+  return 1;
 }
 
 // Function for handling data from curl
