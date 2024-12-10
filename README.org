@@ -1,0 +1,11 @@
+Requirements: [[https://curl.se/][CURL]] and [[https://libzip.org/][libzip]] for treebuilder. [[https://etetoolkit.org/][ETE toolkit]] is required to run the tree visualizer python script.
+*  Treebuilder installation and usage
+#+begin_src bash
+  make
+  ./treebuilder seq1.fasta seq2.fasta seq3.fasta
+#+end_src
+* Treeviz usage
+
+#+begin_src bash
+python3 treeviz.py "(A:3, B:4, (C:1, D:2):2)"
+#+end_src

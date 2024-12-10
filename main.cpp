@@ -82,7 +82,7 @@ int main(int argc, char **args) {
   std::vector<std::string> taxaNames;
   phylipToNewick(inputAlignedSeq, newickString, taxaNames);
 
-  std::cout << newickString << std::endl;
+  std::cout << std::endl << newickString << std::endl;
 }
 
 void appendFileToStream(std::ifstream &file, std::ostringstream &ss) {

@@ -142,6 +142,7 @@ int getHammingDistance(const std::string &first, const std::string &second) {
   // Number of mismatches, excluding gaps
   int diff = 0;
 
+  
   for (int i = 0; i < length; i++) {
     if (first[i] != second[i] && (first[i] != '-' || second[i] != '-')) {
       diff++;
