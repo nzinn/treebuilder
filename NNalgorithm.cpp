@@ -12,6 +12,7 @@ void updateDistances(struct DMatrix &matrix, int first, int second,
                      int newNode);
 DMatrix *phylipToMatrix(std::istream &phylipStream);
 
+
 void phylipToNewick(std::istream &phylipStream, std::string &newickString, std::vector<std::string> &taxaNames) {
 
   struct DMatrix *matrix = phylipToMatrix(phylipStream);

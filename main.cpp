@@ -76,44 +76,13 @@ int main(int argc, char **args) {
     return -1;
   }
 
+
   std::istringstream inputAlignedSeq(alignedSeq.str());
   std::string newickString;
   std::vector<std::string> taxaNames;
   phylipToNewick(inputAlignedSeq, newickString, taxaNames);
 
-
-  // Outgroup selection
-  bool outgroupSelected = false;
-  std::cout << std::endl << "Select outgroup [0-" << taxaNames.size() - 1 << "]:" << std::endl;
-
-  std::string outgroup;
-  while (!outgroupSelected) {
-
-    int taxaIndex;
-    for (int i = 0; i < taxaNames.size(); i++) {
-      std::cout << i << ". " << taxaNames[i] << std::endl;
-    }
-
-    std::cin >> taxaIndex;
-
-    if (!std::cin) {
-      std::cout << "Please insert a number from 0 to " << taxaNames.size() - 1 << std::endl;
-    } else {
-      outgroup = taxaNames[taxaIndex];
-      outgroupSelected = true;
-    }
-  }  
-
-  // Select filename
-  std::cout << "Insert filname (no extension): " << std::endl;
-
-  std::string filename;
-  std::cin >> filename;
-
-  // Convert newick string to tree images 
-  std::string pyCommand = "python3 treeviz.py \"" + newickString + "\" " + filename + ".png"; 
-
-  system(pyCommand.c_str());
+  std::cout << newickString << std::endl;
 }
 
 void appendFileToStream(std::ifstream &file, std::ostringstream &ss) {

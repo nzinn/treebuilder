@@ -1,10 +1,10 @@
 treebuilder: main.o tree.o DMatrix.o NNalgorithm.o 
-	clang++ -lzip -lcurl main.o tree.o DMatrix.o NNalgorithm.o -o treebuilder -g
+	clang++ -lzip -lcurl main.o tree.o DMatrix.o NNalgorithm.o -o treebuilder 
 main.o: main.cpp
-	clang++ main.cpp -c -g
+	clang++ main.cpp -c 
 tree.o:	tree.cpp
-	clang++ tree.cpp -c -g
+	clang++ tree.cpp -c 
 DMatrix.o: DMatrix.cpp
-	clang++ DMatrix.cpp -c -g 
+	clang++ DMatrix.cpp -c 
 NNalgorithm.o:
-	clang++ NNalgorithm.cpp -c -g
+	clang++ NNalgorithm.cpp -c 
