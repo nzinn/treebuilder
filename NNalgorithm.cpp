@@ -4,13 +4,15 @@
 #include <iostream>
 #include <limits>
 
+
+
 int sumDistances(struct DMatrix &matrix, int taxa);
 void getNearestNeighbors(struct DMatrix &matrix, int &first, int &second);
 void updateDistances(struct DMatrix &matrix, int first, int second,
                      int newNode);
 DMatrix *phylipToMatrix(std::istream &phylipStream);
 
-std::string phylipToNewick(std::istream &phylipStream) {
+void phylipToNewick(std::istream &phylipStream, std::string &newickString, std::vector<std::string> &taxaNames) {
 
   struct DMatrix *matrix = phylipToMatrix(phylipStream);
   Tree *tree = new Tree(matrix->distances.size());
@@ -61,11 +63,15 @@ std::string phylipToNewick(std::istream &phylipStream) {
 
   tree->add_edge(matrix->activeNodes[0], matrix->activeNodes[1], distance);
 
-  std::string newickString = tree->toNewickString();
+  newickString = tree->toNewickString();
+
+  for (const auto name : matrix->names) {
+    taxaNames.push_back(name);
+  }
+  
   delete matrix;
   delete tree;
 
-  return newickString;
 }
 // Given a distance matrix, put the index of the nearest neighbors in first and
 // second

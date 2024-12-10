@@ -43,39 +43,87 @@ CURLcode curlReq(CURL *curl, std::string url, std::string &response);
 
 int alignSequences(const std::string &sequences,  std::ostream &phylipOut);
 
+void appendFileToStream(std::ifstream &file, std::ostringstream &ss);
+
+
 int main(int argc, char **args) {
 
   std::ostringstream sequences;
 
-  if (argc < 4) {
-    std::cout << "Please input at least 3 files in FASTA format" << std::endl;
+
+  
+  if (argc == 2 && fs::is_directory(fs::path(args[1]))) {
+
+    for (auto const& dir_entry : fs::directory_iterator(fs::path(args[1]))) {
+      std::ifstream fastaFile(dir_entry.path());
+      appendFileToStream(fastaFile, sequences);
+    }
+  } else if (argc > 2) {
+    for (int i = 1; i < argc; i++) {
+      std::ifstream fastaFile(args[i]);
+      appendFileToStream(fastaFile, sequences);
+    }
+  } else {
+    std::cout << "Enter a directory or at least 3 FASTA files!" << std::endl;
     return -1;
   }
 
-  // Read FASTA files
-  for (int i = 1; i < argc; i++) {
-    std::ifstream seq(args[i]);
-
-    if (seq.is_open()) {
-      sequences << std::string((std::istreambuf_iterator<char>(seq)),
-                               (std::istreambuf_iterator<char>()));
-    } else {
-      std::cout << "Failed to open file, exiting." << std::endl;
-    }
-  }
 
 
-  std::stringstream alignedSeq;
+  std::ostringstream alignedSeq;
   // Submit sequences to clustal omega to align
   if (!alignSequences(sequences.str(), alignedSeq)) {
     return -1;
   }
 
-  std::cout << phylipToNewick(alignedSeq) << std::endl;
+  std::istringstream inputAlignedSeq(alignedSeq.str());
+  std::string newickString;
+  std::vector<std::string> taxaNames;
+  phylipToNewick(inputAlignedSeq, newickString, taxaNames);
 
-  
+
+  // Outgroup selection
+  bool outgroupSelected = false;
+  std::cout << std::endl << "Select outgroup [0-" << taxaNames.size() - 1 << "]:" << std::endl;
+
+  std::string outgroup;
+  while (!outgroupSelected) {
+
+    int taxaIndex;
+    for (int i = 0; i < taxaNames.size(); i++) {
+      std::cout << i << ". " << taxaNames[i] << std::endl;
+    }
+
+    std::cin >> taxaIndex;
+
+    if (!std::cin) {
+      std::cout << "Please insert a number from 0 to " << taxaNames.size() - 1 << std::endl;
+    } else {
+      outgroup = taxaNames[taxaIndex];
+      outgroupSelected = true;
+    }
+  }  
+
+  // Select filename
+  std::cout << "Insert filname (no extension): " << std::endl;
+
+  std::string filename;
+  std::cin >> filename;
+
+  // Convert newick string to tree images 
+  std::string pyCommand = "python3 treeviz.py \"" + newickString + "\" " + filename + ".png"; 
+
+  system(pyCommand.c_str());
 }
 
+void appendFileToStream(std::ifstream &file, std::ostringstream &ss) {
+  if (file.is_open()) {
+    ss << std::string((std::istreambuf_iterator<char>(file)),
+		      (std::istreambuf_iterator<char>()));
+  } else {
+    std::cout << "Failed to open file, exiting" << std::endl;
+  }
+}
 
 // From a string of sequences in FASTA format
 int alignSequences(const std::string &sequences,  std::ostream &phylipOut) {
@@ -125,7 +173,7 @@ int alignSequences(const std::string &sequences,  std::ostream &phylipOut) {
   CURLcode waiting;
   std::string jobStatus = "";
 
-  while (jobStatus != "FINISHED") {
+  while (jobStatus[0] != 'F') {
     std::cout << "waiting for results.." << std::endl;
     sleep(2);
     waiting = curlReq(curl, CLUSTAL_API_URL + "/status/" + jobID, jobStatus);
@@ -143,31 +191,40 @@ int alignSequences(const std::string &sequences,  std::ostream &phylipOut) {
   CURLcode download =
       curlReq(curl, CLUSTAL_API_URL + "/result/" + jobID + "/zip", zipFile);
 
+  
   if (download != CURLE_OK) {
     std::cout << "Curl error: " << download << std::endl;
     return 0;
   }
 
-  // Check if results folder exists, if not create it
 
-  if (!fs::exists(fs::path("results/"))) {
-    std::system("mkdir results");
+  zip_error_t *error;
+
+  
+  zip_source_t *zipSource = zip_source_buffer_create(zipFile.c_str(), zipFile.length(), 0, error);
+
+
+  if (zipSource == nullptr) {
+    std::cout << "Can't open zip source " << std::endl;
+    return -1;
   }
+  
+  zip_t *archive = zip_open_from_source(zipSource, 0, error);
 
-
-  zip_error_t error;
-  zip_source_t *zipSource = zip_source_buffer_create(zipFile.c_str(), zipFile.length(), 0, &error);
-  zip_t *archive = zip_open_from_source(zipSource, 0, &error);
+  if (archive == nullptr) {
+    std::cout << "Can't open archive." << std::endl;
+  }
 
   std::string filename = jobID + ".phylip";
   zip_file_t *phylipFile = zip_fopen(archive, filename.c_str(), 0);
 
 
-  char *buf;
+  char buf;
 
-  while (zip_fread(phylipFile, buf, 1)) {
-    phylipOut << *buf;
+  while (zip_fread(phylipFile, &buf, 1)) {
+    phylipOut << buf;
   }
+
   
 
   zip_fclose(phylipFile);
